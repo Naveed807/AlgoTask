@@ -3,12 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Services\DashboardService;
+use App\Services\DashboardExportService;
 use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
     public function __construct(
-        protected DashboardService $dashboardService
+        protected DashboardService $dashboardService,
+        protected DashboardExportService $exportService
     ) {
     }
 
@@ -82,5 +84,15 @@ class DashboardController extends Controller
         );
 
         return response()->json($results);
+    }
+
+    /**
+     * Export filtered cases to CSV.
+     */
+    public function exportCSV(Request $request)
+    {
+        $filters = $request->query();
+
+        return $this->exportService->exportToCSV($filters);
     }
 }

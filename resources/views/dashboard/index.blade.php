@@ -4,12 +4,20 @@
             <h2 class="font-semibold text-2xl text-gray-800 dark:text-gray-200 leading-tight">
                 📊 Delayed Cases Analytics Dashboard
             </h2>
-            <button id="refresh-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                </svg>
-                Refresh
-            </button>
+            <div class="flex gap-2">
+                <button id="export-csv-btn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                    </svg>
+                    Export CSV
+                </button>
+                <button id="refresh-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    Refresh
+                </button>
+            </div>
         </div>
     </x-slot>
 
@@ -412,6 +420,46 @@
             } else {
                 console.error('refresh-btn not found');
             }
+
+            // Attach export CSV button listener
+            const exportBtn = document.getElementById('export-csv-btn');
+            if (exportBtn) {
+                exportBtn.addEventListener('click', () => {
+                    console.log('Export CSV button clicked');
+                    exportToCSV();
+                });
+            } else {
+                console.error('export-csv-btn not found');
+            }
+        }
+
+        // Export filtered data to CSV
+        function exportToCSV() {
+            const filters = new URLSearchParams();
+            
+            // Get current filters
+            const district = document.getElementById('filter-district')?.value;
+            const tehsil = document.getElementById('filter-tehsil')?.value;
+            const partner = document.getElementById('filter-partner')?.value;
+            const bank = document.getElementById('filter-bank')?.value;
+            const severity = document.getElementById('filter-severity')?.value;
+            const stage = document.getElementById('filter-stage')?.value;
+
+            if (district) filters.append('district', district);
+            if (tehsil) filters.append('tehsil', tehsil);
+            if (partner) filters.append('partner', partner);
+            if (bank) filters.append('bank', bank);
+            if (severity) filters.append('severity', severity);
+            if (stage) filters.append('stage', stage);
+
+            filters.append('sort_by', currentSort.field);
+            filters.append('sort_order', currentSort.order);
+
+            const url = `/api/dashboard/export-csv?${filters}`;
+            console.log('Exporting CSV:', url);
+
+            // Trigger download
+            window.location.href = url;
         }
 
         // Wait for Chart.js to load and DOM to be ready

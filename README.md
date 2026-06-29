@@ -102,6 +102,26 @@ The AlgoTask application stores housing cases in PostgreSQL, determines which ca
 
 ## 📊 Dashboard Features
 
+### ✨ Latest Features (v2.0)
+
+**Queue-Based Indexing** - Background processing for large datasets
+- Dispatch reindexing jobs to background queue
+- No more blocking terminal during reindex
+- Automatic retry on failure
+- Perfect for production environments
+
+**Automated Tests** - Comprehensive test coverage
+- 6 stage detection tests
+- 11 severity calculation tests
+- Boundary value testing
+- Run with: `./vendor/bin/pest`
+
+**CSV Export** - Export filtered dashboard data
+- Green "Export CSV" button in dashboard header
+- Respects active filters and sorting
+- Downloads as `delayed_cases_YYYY-MM-DD_HH-MM-SS.csv`
+- Includes all visible columns
+
 ### KPI Cards
 - **Total Delayed Cases** - Overall count of all delayed cases
 - **Green Cases** - On-track cases (low risk)
@@ -209,22 +229,110 @@ Calculates severity based on stage type and waiting days:
 
 ## 🛠️ Commands
 
-### Run Specific Commands
+### Reindex Delayed Cases
 
-**Reindex all delayed cases:**
+The `analytics:reindex-delays` command supports both synchronous and queue-based execution:
+
+**Queue-Based (Background Processing - Recommended):**
 ```bash
+# Dispatch job to queue
 php artisan analytics:reindex-delays
+
+# Start queue worker in separate terminal
+php artisan queue:work
+
+# Process specific queue
+php artisan queue:work --queue=default
+
+# Monitor queue jobs
+php artisan queue:failed  # View failed jobs
+php artisan queue:retry all  # Retry failed jobs
 ```
 
-**Run tests:**
+The queue-based approach:
+- Returns immediately, doesn't block terminal
+- Processes large datasets in the background
+- Supports automatic retries on failure
+- Logs job status and errors
+- Better for production environments
+
+**Synchronous (Blocking - for Testing):**
+```bash
+# Run immediately with progress bar
+php artisan analytics:reindex-delays --sync
+```
+
+### Run Tests
+
+Comprehensive test suite for stage detection and severity calculation:
+
+**Run All Tests:**
 ```bash
 ./vendor/bin/pest
 ```
+
+**Run Specific Test Suite:**
+```bash
+# Stage Detection Tests (6 tests)
+./vendor/bin/pest tests/Feature/StageDetectionTest.php
+
+# Severity Calculation Tests (11 tests)
+./vendor/bin/pest tests/Feature/SeverityCalculationTest.php
+```
+
+**Run Tests with Coverage:**
+```bash
+./vendor/bin/pest --coverage
+./vendor/bin/pest --coverage tests/Feature/StageDetectionTest.php
+```
+
+**Test Descriptions:**
+
+**StageDetectionTest.php**
+- `can_detect_waiting_for_second_release_stage` - Identifies stage after first release
+- `can_detect_waiting_for_structure_inspection_stage` - Identifies stage after second release
+- `can_detect_waiting_for_final_release_stage` - Identifies stage after structure inspection
+- `returns_null_for_completed_case` - Skips cases with final release
+- `returns_null_when_no_financial_or_inspection_records` - Handles missing relations
+- `stage_start_date_is_set_correctly` - Validates stage date accuracy
+
+**SeverityCalculationTest.php**
+- `calculates_green_severity_for_release_to_inspection_new_case` - 0-15 days = green
+- `calculates_yellow_severity_for_release_to_inspection_medium_delay` - 16-30 days = yellow
+- `calculates_amber_severity_for_release_to_inspection_high_delay` - 31-45 days = amber
+- `calculates_red_severity_for_release_to_inspection_critical_delay` - 46+ days = red
+- `calculates_green_severity_for_inspection_to_release_new_case` - 0-7 days = green
+- `calculates_yellow_severity_for_inspection_to_release_medium_delay` - 8-15 days = yellow
+- `calculates_amber_severity_for_inspection_to_release_high_delay` - 16-30 days = amber
+- `calculates_red_severity_for_inspection_to_release_critical_delay` - 31+ days = red
+- `release_to_inspection_thresholds_are_consistent` - Threshold validation
+- `inspection_to_release_thresholds_are_consistent` - Threshold validation
+- `handles_boundary_values_for_release_to_inspection` - Boundary testing (15/16, 30/31, 45/46)
+- `handles_boundary_values_for_inspection_to_release` - Boundary testing (7/8, 15/16, 30/31)
+- `accepts_carbon_date_object` - Flexible date input
+- `throws_exception_for_invalid_stage_type` - Error handling
+
+### Clear Cache
 
 **Clear application cache:**
 ```bash
 php artisan cache:clear
 php artisan config:clear
+```
+
+### Export Dashboard Data
+
+**Export filtered cases to CSV:**
+- Click "Export CSV" button in dashboard header
+- Downloads `delayed_cases_YYYY-MM-DD_HH-MM-SS.csv`
+- Respects active filters and sorting
+- Includes: Case UUID, Applicant, CNIC, District, Partner, Stage, Days, Severity
+
+**Programmatic Export:**
+```bash
+curl "http://localhost:8000/api/dashboard/export-csv?district=Lahore&severity=red" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -o delayed_cases.csv
 ```
 
 ## 🔐 Authentication
@@ -272,10 +380,12 @@ curl http://localhost:9200/delay_cases/_count
 ```
 ├── app/
 │   ├── Console/Commands/
-│   │   └── AnalyticsReindexDelays.php
+│   │   └── AnalyticsReindexDelays.php (queue dispatch)
 │   ├── Http/Controllers/
-│   │   ├── DashboardController.php
+│   │   ├── DashboardController.php (dashboard + CSV export)
 │   │   └── ProfileController.php
+│   ├── Jobs/
+│   │   └── IndexDelayedCases.php (async indexing job)
 │   ├── Models/
 │   │   ├── ApplicantCase.php
 │   │   ├── FinancialRelease.php
@@ -286,7 +396,9 @@ curl http://localhost:9200/delay_cases/_count
 │   │   ├── SeverityService.php
 │   │   ├── DelayDocumentBuilderService.php
 │   │   ├── ElasticsearchService.php
-│   │   └── DashboardService.php
+│   │   ├── DashboardService.php
+│   │   ├── ElasticsearchMappingService.php
+│   │   └── DashboardExportService.php (CSV export)
 |---Public/
 |   ├── Screenshots/
 ├── database/
@@ -307,11 +419,19 @@ curl http://localhost:9200/delay_cases/_count
 │   ├── css/
 │   └── js/
 ├── routes/
-│   ├── web.php
+│   ├── web.php (includes export route)
 │   ├── auth.php
 │   └── console.php
+├── tests/
+│   ├── Feature/
+│   │   ├── StageDetectionTest.php (6 tests)
+│   │   └── SeverityCalculationTest.php (11 tests)
+│   ├── Unit/
+│   ├── Pest.php
+│   └── TestCase.php
 └── config/
     ├── elasticsearch.php
+    ├── queue.php
     └── ...
 ```
 
@@ -336,5 +456,27 @@ ELASTICSEARCH_INDEX=delay_cases
 MAIL_DRIVER=smtp
 SESSION_DRIVER=file
 CACHE_DRIVER=file
-QUEUE_DRIVER=sync
+QUEUE_CONNECTION=database
 ```
+
+### Queue Configuration
+
+The application uses **database queue driver** (default):
+- No external services needed (Redis not required)
+- Jobs stored in `jobs` table
+- Failed jobs stored in `failed_jobs` table
+- Suitable for development and small-to-medium production workloads
+
+**To use queue:**
+```bash
+# Ensure jobs table exists (created by migration)
+php artisan migrate
+
+# Start queue worker
+php artisan queue:work
+
+# Process jobs with custom settings
+php artisan queue:work --queue=default --tries=3 --timeout=3600
+```
+
+**Queue Configuration File:** `config/queue.php`

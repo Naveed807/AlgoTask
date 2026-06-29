@@ -20,6 +20,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/api/dashboard/cases', [DashboardController::class, 'cases']);
     Route::get('/api/dashboard/filter-options', [DashboardController::class, 'filterOptions']);
     Route::get('/api/dashboard/search', [DashboardController::class, 'search']);
+    Route::get('/api/dashboard/export-csv', [DashboardController::class, 'exportCSV'])->name('dashboard.export.csv');
     
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
