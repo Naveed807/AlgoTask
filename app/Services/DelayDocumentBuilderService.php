@@ -82,8 +82,9 @@ class DelayDocumentBuilderService
 
             'stage_type' => $stage['stage_type'],
 
-            'stage_start_date' => $stage['stage_start_date']
-                ->toDateString(),
+            'stage_start_date' => is_string($stage['stage_start_date'])
+                ? $stage['stage_start_date']
+                : $stage['stage_start_date']->toDateString(),
 
             /*
             |--------------------------------------------------------------------------

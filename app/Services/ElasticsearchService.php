@@ -4,28 +4,43 @@ namespace App\Services;
 
 use Elastic\Elasticsearch\Client;
 use Elastic\Elasticsearch\ClientBuilder;
+use GuzzleHttp\Client as GuzzleClient;
 
 class ElasticsearchService
 {
-    protected Client $client;
-
+    protected ?Client $client;
+    protected GuzzleClient $guzzleClient;
+    protected string $baseUrl;
     protected string $index;
 
     public function __construct()
     {
-        $this->client = ClientBuilder::create()
-            ->setHosts([
-                config('elasticsearch.host')
-            ])
-            ->build();
+        // Get base URL and index from config
+        $hosts = config('elasticsearch.hosts', ['http://localhost:9200']);
+        $this->baseUrl = rtrim($hosts[0], '/');
+        $this->index = config('elasticsearch.index', 'delay_cases');
 
-        $this->index = config('elasticsearch.index');
+        // Initialize Guzzle for direct HTTP requests (to bypass version header issue)
+        $this->guzzleClient = new GuzzleClient([
+            'base_uri' => $this->baseUrl,
+            'http_errors' => false,
+        ]);
+
+        // Try to initialize the Elasticsearch client
+        try {
+            $this->client = ClientBuilder::create()
+                ->setHosts($hosts)
+                ->build();
+        } catch (\Exception $e) {
+            // If client initialization fails, we'll use Guzzle directly
+            $this->client = null;
+        }
     }
 
     /**
      * Get Elasticsearch client.
      */
-    public function client(): Client
+    public function client(): ?Client
     {
         return $this->client;
     }
@@ -43,9 +58,21 @@ class ElasticsearchService
      */
     public function indexExists(?string $index = null): bool
     {
-        return $this->client->indices()->exists([
-            'index' => $index ?? $this->index,
-        ])->asBool();
+        $index = $index ?? $this->index;
+        
+        try {
+            if ($this->client) {
+                return $this->client->indices()->exists([
+                    'index' => $index,
+                ])->asBool();
+            }
+        } catch (\Exception $e) {
+            // Fall back to Guzzle
+        }
+
+        // Use Guzzle directly
+        $response = $this->guzzleClient->head("/{$index}");
+        return $response->getStatusCode() === 200;
     }
 
     /**
@@ -59,9 +86,19 @@ class ElasticsearchService
             return true;
         }
 
-        return $this->client->indices()->delete([
-            'index' => $index,
-        ])->asBool();
+        try {
+            if ($this->client) {
+                return $this->client->indices()->delete([
+                    'index' => $index,
+                ])->asBool();
+            }
+        } catch (\Exception $e) {
+            // Fall back to Guzzle
+        }
+
+        // Use Guzzle directly
+        $response = $this->guzzleClient->delete("/{$index}");
+        return $response->getStatusCode() >= 200 && $response->getStatusCode() < 300;
     }
 
     /**
@@ -75,10 +112,23 @@ class ElasticsearchService
             return true;
         }
 
-        return $this->client->indices()->create([
-            'index' => $index,
-            'body' => $body,
-        ])->asBool();
+        try {
+            if ($this->client) {
+                return $this->client->indices()->create([
+                    'index' => $index,
+                    'body' => $body,
+                ])->asBool();
+            }
+        } catch (\Exception $e) {
+            // Fall back to Guzzle
+        }
+
+        // Use Guzzle directly
+        $response = $this->guzzleClient->put("/{$index}", [
+            'json' => $body,
+        ]);
+        
+        return $response->getStatusCode() >= 200 && $response->getStatusCode() < 300;
     }
 
     /**
@@ -86,11 +136,24 @@ class ElasticsearchService
      */
     public function indexDocument(array $document, string|int $id): bool
     {
-        return $this->client->index([
-            'index' => $this->index,
-            'id' => $id,
-            'body' => $document,
-        ])->asBool();
+        try {
+            if ($this->client) {
+                return $this->client->index([
+                    'index' => $this->index,
+                    'id' => $id,
+                    'body' => $document,
+                ])->asBool();
+            }
+        } catch (\Exception $e) {
+            // Fall back to Guzzle
+        }
+
+        // Use Guzzle directly
+        $response = $this->guzzleClient->put("/{$this->index}/_doc/{$id}", [
+            'json' => $document,
+        ]);
+        
+        return $response->getStatusCode() >= 200 && $response->getStatusCode() < 300;
     }
 
     /**
@@ -98,9 +161,29 @@ class ElasticsearchService
      */
     public function bulkIndex(array $documents): array
     {
-        return $this->client->bulk([
-            'body' => $documents,
-        ])->asArray();
+        try {
+            if ($this->client) {
+                return $this->client->bulk([
+                    'body' => $documents,
+                ])->asArray();
+            }
+        } catch (\Exception $e) {
+            // Fall back to Guzzle
+        }
+
+        // Use Guzzle directly - format as NDJSON
+        $body = '';
+        foreach ($documents as $doc) {
+            $body .= json_encode($doc) . "\n";
+        }
+
+        $response = $this->guzzleClient->post('/_bulk', [
+            'body' => $body,
+            'headers' => ['Content-Type' => 'application/x-ndjson'],
+        ]);
+
+        $result = json_decode($response->getBody(), true) ?? [];
+        return $result;
     }
 
     /**
@@ -108,10 +191,23 @@ class ElasticsearchService
      */
     public function search(array $query): array
     {
-        return $this->client->search([
-            'index' => $this->index,
-            'body' => $query,
-        ])->asArray();
+        try {
+            if ($this->client) {
+                return $this->client->search([
+                    'index' => $this->index,
+                    'body' => $query,
+                ])->asArray();
+            }
+        } catch (\Exception $e) {
+            // Fall back to Guzzle
+        }
+
+        // Use Guzzle directly
+        $response = $this->guzzleClient->post("/{$this->index}/_search", [
+            'json' => $query,
+        ]);
+
+        return json_decode($response->getBody(), true) ?? [];
     }
 
     /**
@@ -119,10 +215,21 @@ class ElasticsearchService
      */
     public function deleteDocument(string|int $id): bool
     {
-        return $this->client->delete([
-            'index' => $this->index,
-            'id' => $id,
-        ])->asBool();
+        try {
+            if ($this->client) {
+                return $this->client->delete([
+                    'index' => $this->index,
+                    'id' => $id,
+                ])->asBool();
+            }
+        } catch (\Exception $e) {
+            // Fall back to Guzzle
+        }
+
+        // Use Guzzle directly
+        $response = $this->guzzleClient->delete("/{$this->index}/_doc/{$id}");
+        
+        return $response->getStatusCode() >= 200 && $response->getStatusCode() < 300;
     }
 
     /**
@@ -134,19 +241,30 @@ class ElasticsearchService
      */
     public function aggregate(array $aggs, array $query = []): array
     {
-        $params = [
-            'index' => $this->index,
-            'body' => [
-                'size' => 0,
-                'query' => empty($query)
-                    ? ['match_all' => (object) []]
-                    : $query,
-                'aggs' => $aggs,
-            ],
+        $body = [
+            'size' => 0,
+            'query' => empty($query)
+                ? ['match_all' => (object) []]
+                : $query,
+            'aggs' => $aggs,
         ];
 
-        return $this->client
-            ->search($params)
-            ->asArray();
+        try {
+            if ($this->client) {
+                return $this->client->search([
+                    'index' => $this->index,
+                    'body' => $body,
+                ])->asArray();
+            }
+        } catch (\Exception $e) {
+            // Fall back to Guzzle
+        }
+
+        // Use Guzzle directly
+        $response = $this->guzzleClient->post("/{$this->index}/_search", [
+            'json' => $body,
+        ]);
+
+        return json_decode($response->getBody(), true) ?? [];
     }
 }
