@@ -350,6 +350,72 @@ The dashboard requires user authentication via Laravel Breeze:
 4. **Normalized Fields** - Lowercase fields for case-insensitive filtering
 5. **Search Blob** - Combined field for comprehensive full-text search
 
+## ⚠️ Assumptions & Limitations
+
+### Assumptions
+
+The project assumes the following about your environment:
+
+- **PHP Version:** PHP 8.1 or higher with `ext-pdo_pgsql` and `ext-curl` extensions
+- **PostgreSQL:** Version 12+ running on `localhost:5432` (or configured host)
+- **Elasticsearch:** Version 8.x running in Docker on `localhost:9200`
+- **Docker:** Docker Desktop installed and running for Elasticsearch container
+- **Node.js:** Node.js 18+ with NPM for frontend asset building
+- **Development Environment:** Laragon, XAMPP, or similar local development setup
+- **Port Availability:** 
+  - `8000` for Laravel dev server
+  - `9200` for Elasticsearch
+  - `5432` for PostgreSQL
+- **User Authentication:** Users are authenticated via Laravel Breeze (included)
+- **Composer:** Global Composer installation or `php artisan` available
+- **npm:** Global NPM available in PATH
+
+### Limitations
+
+Current version has the following limitations:
+
+1. **Queue Processing**
+   - Requires manual `php artisan queue:work` in separate terminal
+   - No built-in queue manager (UI) - limited to CLI
+   - Database driver (no Redis) suitable for small-to-medium workloads only
+   - Not recommended for >10,000 queued jobs
+
+2. **Elasticsearch**
+   - Requires Docker (no standalone/cloud fallback option)
+   - No automatic index migration on schema changes
+   - Single-shard index (not clustered) - suitable for <100K documents
+   - Index must be manually recreated for schema updates
+
+3. **Data & Filtering**
+   - CSV export limited to current page size (max 10,000 records per export)
+   - No custom date range filters (only predefined stages)
+   - No role-based access control (all authenticated users see all data)
+   - No audit trail or case history tracking
+
+4. **Real-time Updates**
+   - Dashboard does not auto-refresh (requires manual action)
+   - New cases require manual reindex to appear in analytics
+   - Filter changes require browser refresh (AJAX only)
+
+5. **Performance**
+   - Recommended for <100K delayed cases
+   - Bulk indexing processes 100 records at a time (slower for massive datasets)
+   - No pagination limit on dashboard table (renders all 25 rows at once)
+   - Search spans multiple fields (may be slow with very large datasets)
+
+6. **Deployment**
+   - No caching layer beyond Laravel cache (no Varnish/CDN integration)
+   - Designed for single-server deployment (no multi-instance support)
+   - No load balancing or horizontal scaling built-in
+   - Queue processing single-threaded (no parallel job processing)
+
+7. **Features Not Included**
+   - User management UI (admin panel)
+   - Email notifications for case status changes
+   - Scheduled background jobs (relies on manual queue worker)
+   - API rate limiting
+   - Multi-language support
+
 ## 🐛 Troubleshooting
 
 **Elasticsearch Connection Error:**
